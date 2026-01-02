@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { json, urlencoded } from 'express';
@@ -6,17 +6,19 @@ import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 
-export async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    cors: {
-      origin: [
-        /http:\/\/localhost:[1-9]+/,
-        /http:\/\/127.0.0.1:[1-9]+/,
-        // /^(http(s)?:\/\/)?([a-zA-Z1-9]+\.)?example.com$/,
-      ],
-    },
-    bodyParser: true,
-  });
+export async function bootstrap(app?: INestApplication, port?: number) {
+  if (!app) {
+    app = await NestFactory.create(AppModule, {
+      cors: {
+        origin: [
+          /http:\/\/localhost:[1-9]+/,
+          /http:\/\/127.0.0.1:[1-9]+/,
+          // /^(http(s)?:\/\/)?([a-zA-Z1-9]+\.)?example.com$/,
+        ],
+      },
+    });
+  }
+
   const logger = new Logger('Bootstrap');
 
   app.use(json({ limit: '100mb' }));
@@ -24,10 +26,14 @@ export async function bootstrap() {
   app.use(helmet());
 
   const configService = app.get(ConfigService);
-  const port = configService.get<string>('port');
+  if (isNaN(Number(port))) {
+    port = configService.get<number>('port');
+  }
 
   await app.listen(port, '0.0.0.0');
 
   logger.log(`app started on port ${port}`);
+
+  return app;
 }
 bootstrap();
