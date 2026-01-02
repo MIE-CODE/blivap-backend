@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as request from 'supertest';
 
-import { bootstrap } from 'src/main';
+import { bootstrap } from 'src/bootstrap';
 
 import { AppModule } from './../src/app.module';
 
@@ -17,7 +17,7 @@ describe('AppController (e2e)', () => {
 
     app = moduleFixture.createNestApplication<INestApplication>();
 
-    await bootstrap(app, 0);
+    await bootstrap(app, 1);
   });
 
   it('/ (GET)', async () => {

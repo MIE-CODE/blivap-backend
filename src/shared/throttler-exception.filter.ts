@@ -15,7 +15,7 @@ export class ThrottlerExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
     const status = exception.getStatus();
 
-    response.status(status).send({
+    response.status(status).json({
       status,
       message: 'Too many requests, please try again later.',
       timestamp: new Date().toISOString(),

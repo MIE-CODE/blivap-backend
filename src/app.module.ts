@@ -1,3 +1,4 @@
+import { BullModule } from '@nestjs/bullmq';
 import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -8,6 +9,7 @@ import * as redisStore from 'cache-manager-redis-store';
 import { RedisClientOptions } from 'redis';
 
 import { AppController } from './app.controller';
+import { AuthenticationModule } from './authentication/authentication.module';
 import config from './shared/config';
 import { HttpCacheInterceptor } from './shared/http-cache.interceptor';
 import { UserModule } from './user/user.module';
@@ -44,7 +46,22 @@ import { UserModule } from './user/user.module';
       },
     }),
     ThrottlerModule.forRoot({ throttlers: [config().throttle] }),
+    BullModule.forRootAsync({
+      useFactory() {
+        const { redis, env } = config();
+        return {
+          connection: {
+            host: redis.host,
+            port: redis.port,
+            password: redis.password,
+            tls: redis.useTLS ? {} : undefined,
+          },
+          prefix: `{${env}}`,
+        };
+      },
+    }),
     UserModule,
+    AuthenticationModule,
   ],
   controllers: [AppController],
   providers: [
