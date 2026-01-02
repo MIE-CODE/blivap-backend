@@ -10,6 +10,7 @@ import { RedisClientOptions } from 'redis';
 import { AppController } from './app.controller';
 import config from './shared/config';
 import { HttpCacheInterceptor } from './shared/http-cache.interceptor';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { HttpCacheInterceptor } from './shared/http-cache.interceptor';
       },
     }),
     ThrottlerModule.forRoot({ throttlers: [config().throttle] }),
+    UserModule,
   ],
   controllers: [AppController],
   providers: [
