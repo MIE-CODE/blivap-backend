@@ -22,6 +22,15 @@ export default () => ({
     secret: process.env.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRES_IN,
   },
+  firebase: {
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY,
+  },
+  sendgrid: {
+    apiKey: process.env.SENDGRID_API_KEY,
+    fromEmail: process.env.SENDGRID_FROM_EMAIL,
+  },
   env: process.env.NODE_ENV ?? 'development',
   isProd: process.env.NODE_ENV === 'production',
   isStaging: process.env.NODE_ENV === 'staging',
