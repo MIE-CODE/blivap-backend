@@ -27,7 +27,7 @@ describe('AuthenticationController (e2e)', () => {
       `${DB_TABLE_NAMES.users}Model`,
     );
 
-    await bootstrap(app, 2);
+    await bootstrap(app, 0);
   });
 
   describe('POST /authentication/login', () => {
