@@ -58,7 +58,7 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           JWT_SECRET: test-jwt-secret-for-ci
-          JWT_EXPIRES_IN: 1h
+          JWT_EXPIRES_IN: 24h
           APP_NAME: Blivap Test
           APP_SLUG: blivap-test
 
@@ -70,7 +70,7 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           JWT_SECRET: test-jwt-secret-for-ci
-          JWT_EXPIRES_IN: 1h
+          JWT_EXPIRES_IN: 24h
           APP_NAME: Blivap Test
           APP_SLUG: blivap-test
           PORT: 2001
