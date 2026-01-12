@@ -34,6 +34,8 @@ import { NotificationService } from './services/notification.service';
       useFactory: () => {
         const { firebase } = config();
 
+        return null;
+
         return admin.initializeApp({
           credential: admin.credential.cert({
             projectId: firebase.projectId,
