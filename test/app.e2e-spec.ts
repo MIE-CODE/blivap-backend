@@ -17,7 +17,7 @@ describe('AppController (e2e)', () => {
 
     app = moduleFixture.createNestApplication<INestApplication>();
 
-    await bootstrap(app, 1);
+    await bootstrap(app, 0);
   });
 
   it('/ (GET)', async () => {
