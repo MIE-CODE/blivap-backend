@@ -8,8 +8,9 @@ config({ path: resolve(__dirname, '../.env.test') });
 // Set NODE_ENV to test
 process.env.NODE_ENV = 'test';
 
-// mock sendgrid so no emails are sent
+// mock email providers so no emails are sent
 jest.mock('@sendgrid/mail');
+jest.mock('resend');
 
 // mock firebase-admin so no real Firebase initialization happens
 jest.mock('firebase-admin', () => ({
