@@ -43,7 +43,7 @@ describe('NotificationService', () => {
   beforeEach(async () => {
     // Mock config properly
     (config as jest.Mock).mockReturnValue({
-      sendgrid: { fromEmail: 'default@example.com', apiKey: 'test-api-key' },
+      resend: { fromEmail: 'default@example.com', apiKey: 'test-api-key' },
     });
 
     const module: TestingModule = await Test.createTestingModule({
@@ -66,11 +66,11 @@ describe('NotificationService', () => {
 
     service = module.get<NotificationService>(NotificationService);
 
-    // Use jest.spyOn to mock the sendWithSendgrid method
+    // Use jest.spyOn to mock the sendWithResend method
     jest
       .spyOn(
-        service as unknown as { sendWithSendgrid: jest.Mock },
-        'sendWithSendgrid',
+        service as unknown as { sendWithResend: jest.Mock },
+        'sendWithResend',
       )
       .mockResolvedValue({});
   });
@@ -108,7 +108,7 @@ describe('NotificationService', () => {
         templateContent,
         payload.templateData,
       );
-      expect(service['sendWithSendgrid']).toHaveBeenCalledWith({
+      expect(service['sendWithResend']).toHaveBeenCalledWith({
         from: { email: 'from@example.com' },
         to: [{ email: 'to@example.com' }],
         subject: 'Test Subject',
@@ -126,7 +126,7 @@ describe('NotificationService', () => {
 
       await service.processEmail({ ...payload, from: undefined });
 
-      expect(service['sendWithSendgrid']).toHaveBeenCalledWith({
+      expect(service['sendWithResend']).toHaveBeenCalledWith({
         from: { email: 'default@example.com' },
         to: [{ email: 'to@example.com' }],
         subject: 'Test Subject',

@@ -3,10 +3,10 @@ import { join } from 'path';
 
 import { InjectQueue } from '@nestjs/bullmq';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import * as sendGridMail from '@sendgrid/mail';
 import { Queue } from 'bullmq';
 import * as admin from 'firebase-admin';
 import * as nunjucks from 'nunjucks';
+import { Resend } from 'resend';
 
 import config from 'src/shared/config';
 import { QUEUE_NAMES } from 'src/shared/constants';
@@ -45,8 +45,8 @@ export class NotificationService {
     const template = readFileSync(templatePath, 'utf-8');
     const html = nunjucks.renderString(template, payload.templateData);
 
-    return this.sendWithSendgrid({
-      from: payload.from ?? { email: config().sendgrid.fromEmail },
+    return this.sendWithResend({
+      from: payload.from ?? { email: config().resend.fromEmail },
       to: payload.to,
       subject: payload.subject,
       html,
@@ -120,36 +120,49 @@ export class NotificationService {
     }
   }
 
-  private async sendWithSendgrid(payload: {
+  private async sendWithResend(payload: {
     to: { email: string; name?: string }[];
     from?: { name?: string; email: string };
     subject: string;
     html: string;
   }) {
     try {
-      sendGridMail.setApiKey(config().sendgrid.apiKey);
+      const resend = new Resend(config().resend.apiKey);
 
-      const msg = {
-        to: payload.to,
-        from: payload.from,
-        subject: payload.subject,
-        html: payload.html,
-      };
+      const fromAddress = payload.from
+        ? payload.from.name
+          ? `${payload.from.name} <${payload.from.email}>`
+          : payload.from.email
+        : config().resend.fromEmail;
 
-      const response = await sendGridMail.send(msg);
-
-      this.logger.log('Email sent with Sendgrid', { response });
-
-      return response;
-    } catch (error) {
-      this.logger.error(
-        `Failed to send email with Sendgrid - ${error.message}`,
-        {
-          data: error.response?.body,
-          stack: error.stack,
-        },
+      const toAddresses = payload.to.map((recipient) =>
+        recipient.name
+          ? `${recipient.name} <${recipient.email}>`
+          : recipient.email,
       );
 
+      const { data, error } = await resend.emails.send({
+        from: fromAddress,
+        to: toAddresses,
+        subject: payload.subject,
+        html: payload.html,
+      });
+
+      if (error) {
+        this.logger.error(
+          `Failed to send email with Resend - ${error.message}`,
+          {
+            name: error.name,
+          },
+        );
+        throw error;
+      }
+
+      this.logger.log('Email sent with Resend', { data });
+
+      return data;
+    } catch (error) {
+      this.logger.error(`Failed to send email with Resend - ${error.message}`);
       throw error;
     }
   }
