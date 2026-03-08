@@ -16,7 +16,7 @@ export async function bootstrap(app?: INestApplication, port?: number) {
         origin: [
           /http:\/\/localhost:[1-9]+/,
           /http:\/\/127.0.0.1:[1-9]+/,
-          // /^(http(s)?:\/\/)?([a-zA-Z1-9]+\.)?example.com$/,
+          /^https:\/\/([a-zA-Z0-9-]+\.)?blivap\.com$/,
         ],
       },
     });
