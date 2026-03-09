@@ -24,30 +24,31 @@ export class AvatarService {
   }
 
   async getAvatars(): Promise<AvatarItem[]> {
-    const folder = this.configService.get<string>('cloudinary.avatarFolder') ?? 'avatars';
+    const folder =
+      this.configService.get<string>('cloudinary.avatarFolder') ??
+      'blivap-avatars';
     const cloudName = this.configService.get<string>('cloudinary.cloudName');
 
     if (!cloudName) {
       return [];
     }
 
-    const result = await cloudinary.api.resources({
-      type: 'upload',
-      prefix: folder,
-      max_results: 100,
-      resource_type: 'image',
-    });
+    try {
+      const result = await cloudinary.api.resources_by_asset_folder(folder, {
+        max_results: 100,
+      });
 
-    const resources = (result.resources ?? []) as Array<{
-      public_id: string;
-      secure_url: string;
-    }>;
+      const resources = result.resources ?? [];
 
-    return resources.map((r) => ({
-      id: r.public_id.replace(/^.*\//, ''),
-      publicId: r.public_id,
-      url: r.secure_url,
-    }));
+      return resources.map((r) => ({
+        id: r.public_id.split('/').pop(),
+        publicId: r.public_id,
+        url: r.secure_url,
+      }));
+    } catch (error) {
+      console.error('Cloudinary avatar fetch failed:', error);
+      return [];
+    }
   }
 
   async getAvatarUrl(publicId: string): Promise<string | null> {

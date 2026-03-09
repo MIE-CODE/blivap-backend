@@ -1,11 +1,19 @@
-import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
+import { JwtGuard } from 'src/authentication/guards/jwt.guard';
 import { Response } from 'src/shared/response';
 
 import { AvatarService } from '../services/avatar.service';
 
 @ApiTags('Avatar')
+@UseGuards(JwtGuard)
 @Controller('avatar')
 export class AvatarController {
   constructor(private readonly avatarService: AvatarService) {}

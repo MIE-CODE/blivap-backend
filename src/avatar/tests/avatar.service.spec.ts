@@ -3,14 +3,15 @@ import { ConfigService } from '@nestjs/config';
 
 import { AvatarService } from '../services/avatar.service';
 
-const mockResources = jest.fn();
+const mockResourcesByAssetFolder = jest.fn();
 const mockUrl = jest.fn();
 
 jest.mock('cloudinary', () => ({
   v2: {
     config: jest.fn(),
     api: {
-      resources: (...args: unknown[]) => mockResources(...args),
+      resources_by_asset_folder: (...args: unknown[]) =>
+        mockResourcesByAssetFolder(...args),
     },
     url: (...args: unknown[]) => mockUrl(...args),
   },
@@ -53,34 +54,35 @@ describe('AvatarService', () => {
     it('should return list of avatars from Cloudinary', async () => {
       const cloudinaryResources = [
         {
-          public_id: 'avatars/avatar1',
-          secure_url: 'https://res.cloudinary.com/test-cloud/image/upload/v1/avatars/avatar1.jpg',
+          public_id: 'avatar1',
+          secure_url:
+            'https://res.cloudinary.com/test-cloud/image/upload/v1/avatar1.jpg',
         },
         {
-          public_id: 'avatars/avatar2',
-          secure_url: 'https://res.cloudinary.com/test-cloud/image/upload/v1/avatars/avatar2.png',
+          public_id: 'avatar2',
+          secure_url:
+            'https://res.cloudinary.com/test-cloud/image/upload/v1/avatar2.png',
         },
       ];
-      mockResources.mockResolvedValue({ resources: cloudinaryResources });
+      mockResourcesByAssetFolder.mockResolvedValue({
+        resources: cloudinaryResources,
+      });
 
       const result = await service.getAvatars();
 
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({
         id: 'avatar1',
-        publicId: 'avatars/avatar1',
-        url: 'https://res.cloudinary.com/test-cloud/image/upload/v1/avatars/avatar1.jpg',
+        publicId: 'avatar1',
+        url: 'https://res.cloudinary.com/test-cloud/image/upload/v1/avatar1.jpg',
       });
       expect(result[1]).toEqual({
         id: 'avatar2',
-        publicId: 'avatars/avatar2',
-        url: 'https://res.cloudinary.com/test-cloud/image/upload/v1/avatars/avatar2.png',
+        publicId: 'avatar2',
+        url: 'https://res.cloudinary.com/test-cloud/image/upload/v1/avatar2.png',
       });
-      expect(mockResources).toHaveBeenCalledWith({
-        type: 'upload',
-        prefix: 'avatars',
+      expect(mockResourcesByAssetFolder).toHaveBeenCalledWith('avatars', {
         max_results: 100,
-        resource_type: 'image',
       });
     });
 
@@ -98,11 +100,11 @@ describe('AvatarService', () => {
       const result = await svc.getAvatars();
 
       expect(result).toEqual([]);
-      expect(mockResources).not.toHaveBeenCalled();
+      expect(mockResourcesByAssetFolder).not.toHaveBeenCalled();
     });
 
     it('should return empty array when Cloudinary returns no resources', async () => {
-      mockResources.mockResolvedValue({ resources: [] });
+      mockResourcesByAssetFolder.mockResolvedValue({ resources: [] });
 
       const result = await service.getAvatars();
 
@@ -113,7 +115,7 @@ describe('AvatarService', () => {
       mockConfigService.get.mockImplementation((key: string) =>
         key === 'cloudinary.avatarFolder' ? 'custom-avatars' : 'test-cloud',
       );
-      mockResources.mockResolvedValue({ resources: [] });
+      mockResourcesByAssetFolder.mockResolvedValue({ resources: [] });
 
       const module = await Test.createTestingModule({
         providers: [
@@ -125,8 +127,9 @@ describe('AvatarService', () => {
 
       await svc.getAvatars();
 
-      expect(mockResources).toHaveBeenCalledWith(
-        expect.objectContaining({ prefix: 'custom-avatars' }),
+      expect(mockResourcesByAssetFolder).toHaveBeenCalledWith(
+        'custom-avatars',
+        expect.objectContaining({ max_results: 100 }),
       );
     });
   });
