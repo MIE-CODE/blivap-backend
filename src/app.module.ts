@@ -10,6 +10,7 @@ import { RedisClientOptions } from 'redis';
 
 import { AppController } from './app.controller';
 import { AuthenticationModule } from './authentication/authentication.module';
+import { AvatarModule } from './avatar/avatar.module';
 import config from './shared/config';
 import { HttpCacheInterceptor } from './shared/http-cache.interceptor';
 import { UserModule } from './user/user.module';
@@ -62,6 +63,7 @@ import { UserModule } from './user/user.module';
     }),
     UserModule,
     AuthenticationModule,
+    AvatarModule,
   ],
   controllers: [AppController],
   providers: [
