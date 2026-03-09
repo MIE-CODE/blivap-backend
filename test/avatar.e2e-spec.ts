@@ -30,22 +30,21 @@ describe('AvatarController (e2e)', () => {
       url: 'https://res.cloudinary.com/test/image/upload/v1/avatars/avatar2.png',
     },
   ];
+  const updatedProfileImage =
+    'https://res.cloudinary.com/test/image/upload/v1/avatars/avatar3.jpg';
+  const mockAvatarService = {
+    getAvatars: jest.fn().mockResolvedValue(mockAvatars),
+    updateAvatar: jest.fn().mockImplementation((_user, profileImage: string) =>
+      Promise.resolve({ profileImage }),
+    ),
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(AvatarService)
-      .useValue({
-        getAvatars: jest.fn().mockResolvedValue(mockAvatars),
-        getAvatarUrl: jest.fn((publicId: string) =>
-          Promise.resolve(
-            publicId && publicId !== 'nonexistent-id'
-              ? `https://res.cloudinary.com/test/image/upload/${publicId}`
-              : null,
-          ),
-        ),
-      })
+      .useValue(mockAvatarService)
       .compile();
 
     app = moduleFixture.createNestApplication<INestApplication>();
@@ -102,31 +101,38 @@ describe('AvatarController (e2e)', () => {
     });
   });
 
-  describe('GET /avatar/:publicId', () => {
-    it('should not return an avatar URL without authentication', async () => {
-      const response = await request(app.getHttpServer()).get('/avatar/avatar1');
+  describe('POST /avatar', () => {
+    it('should not update avatar without authentication', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/avatar')
+        .send({ profileImage: updatedProfileImage });
 
       expect(response.status).toBe(401);
     });
 
-    it('should return avatar URL for valid public id', async () => {
+    it('should validate the avatar payload', async () => {
       const response = await request(app.getHttpServer())
-        .get('/avatar/avatar1')
+        .post('/avatar')
         .set('Authorization', `Bearer ${accessToken}`);
 
-      expect(response.status).toBe(200);
-      expect(response.body.message).toBe('avatar');
-      expect(response.body.data).toBeDefined();
-      expect(response.body.data.publicId).toBe('avatar1');
-      expect(response.body.data.url).toContain('https://res.cloudinary.com');
+      expect(response.status).toBe(422);
+      expect(response.body.errors).toEqual({
+        profileImage:
+          'profileImage must be a URL address, profileImage should not be empty and profileImage must be a string',
+      });
     });
 
-    it('should return 404 when avatar is not found', async () => {
+    it('should update the user profile image', async () => {
       const response = await request(app.getHttpServer())
-        .get('/avatar/nonexistent-id')
-        .set('Authorization', `Bearer ${accessToken}`);
+        .post('/avatar')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ profileImage: updatedProfileImage });
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(201);
+      expect(response.body.message).toBe('avatar updated');
+      expect(response.body.data).toEqual({
+        profileImage: updatedProfileImage,
+      });
     });
   });
 });

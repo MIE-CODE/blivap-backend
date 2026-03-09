@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
+
+import { User } from 'src/user/schemas/user.schema';
+import { UserService } from 'src/user/services/user.service';
 
 export type AvatarItem = {
   id: string;
@@ -10,7 +13,10 @@ export type AvatarItem = {
 
 @Injectable()
 export class AvatarService {
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly userService: UserService,
+  ) {
     const cloudName = this.configService.get<string>('cloudinary.cloudName');
     const apiKey = this.configService.get<string>('cloudinary.apiKey');
     const apiSecret = this.configService.get<string>('cloudinary.apiSecret');
@@ -57,5 +63,23 @@ export class AvatarService {
       return null;
     }
     return cloudinary.url(publicId, { secure: true });
+  }
+
+  async updateAvatar(
+    user: Pick<User, 'email'>,
+    profileImage: string,
+  ): Promise<{ profileImage: string }> {
+    await this.userService.updateOne({ email: user.email }, { profileImage });
+
+    const [updatedUser] = await this.userService.find(
+      { email: user.email },
+      ['profileImage'],
+    );
+
+    if (!updatedUser?.profileImage) {
+      throw new NotFoundException('user not found');
+    }
+
+    return { profileImage: updatedUser.profileImage };
   }
 }

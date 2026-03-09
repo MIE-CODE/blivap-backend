@@ -1,5 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { Test, TestingModule } from '@nestjs/testing';
+
+import { UserService } from 'src/user/services/user.service';
 
 import { AvatarService } from '../services/avatar.service';
 
@@ -24,6 +26,11 @@ describe('AvatarService', () => {
     get: jest.fn(),
   };
 
+  const mockUserService = {
+    updateOne: jest.fn(),
+    find: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     mockConfigService.get.mockImplementation((key: string) => {
@@ -40,6 +47,7 @@ describe('AvatarService', () => {
       providers: [
         AvatarService,
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: UserService, useValue: mockUserService },
       ],
     }).compile();
 
@@ -93,6 +101,7 @@ describe('AvatarService', () => {
         providers: [
           AvatarService,
           { provide: ConfigService, useValue: mockConfigService },
+          { provide: UserService, useValue: mockUserService },
         ],
       }).compile();
       const svc = module.get<AvatarService>(AvatarService);
@@ -121,6 +130,7 @@ describe('AvatarService', () => {
         providers: [
           AvatarService,
           { provide: ConfigService, useValue: mockConfigService },
+          { provide: UserService, useValue: mockUserService },
         ],
       }).compile();
       const svc = module.get<AvatarService>(AvatarService);
@@ -155,6 +165,7 @@ describe('AvatarService', () => {
         providers: [
           AvatarService,
           { provide: ConfigService, useValue: mockConfigService },
+          { provide: UserService, useValue: mockUserService },
         ],
       }).compile();
       const svc = module.get<AvatarService>(AvatarService);
@@ -163,6 +174,44 @@ describe('AvatarService', () => {
 
       expect(result).toBeNull();
       expect(mockUrl).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateAvatar', () => {
+    it('should update the user profile image', async () => {
+      mockUserService.updateOne.mockResolvedValue(undefined);
+      mockUserService.find.mockResolvedValue([
+        { profileImage: 'https://example.com/avatar.png' },
+      ]);
+
+      const result = await service.updateAvatar(
+        { email: 'test@test.com' },
+        'https://example.com/avatar.png',
+      );
+
+      expect(mockUserService.updateOne).toHaveBeenCalledWith(
+        { email: 'test@test.com' },
+        { profileImage: 'https://example.com/avatar.png' },
+      );
+      expect(mockUserService.find).toHaveBeenCalledWith(
+        { email: 'test@test.com' },
+        ['profileImage'],
+      );
+      expect(result).toEqual({
+        profileImage: 'https://example.com/avatar.png',
+      });
+    });
+
+    it('should throw when the user cannot be found after update', async () => {
+      mockUserService.updateOne.mockResolvedValue(undefined);
+      mockUserService.find.mockResolvedValue([]);
+
+      await expect(
+        service.updateAvatar(
+          { email: 'missing@test.com' },
+          'https://example.com/avatar.png',
+        ),
+      ).rejects.toThrow('user not found');
     });
   });
 });
