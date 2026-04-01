@@ -1,17 +1,111 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Email Verification</title>
-</head>
-<body>
-    <h1>Email Verification</h1>
-    <p>Hi {{ name }},</p>
-    <p>Thank you for registering with us. Please use the code below to verify your email address:</p>
-    <p><b>{{ emailValidationToken }}</b></p>
-    <p>If you did not create an account, no further action is required.</p>
-    <p>Best regards,</p>
-    <p>The Doxa Team</p>
-</body>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      background-color: #f4f6f8;
+      font-family: Arial, sans-serif;
+    "
+  >
+    <table
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      style="background-color: #f4f6f8; padding: 20px 0"
+    >
+      <tr>
+        <td align="center">
+          <table
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            style="
+              max-width: 500px;
+              background: #ffffff;
+              border-radius: 8px;
+              padding: 30px;
+            "
+          >
+            <tr>
+              <td align="center" style="padding-bottom: 20px">
+                <h2 style="margin: 0; color: #960018">Verify Your Email</h2>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="color: #4b5563; font-size: 14px; line-height: 1.6">
+                <p style="margin: 0 0 10px">Hi {{ name }},</p>
+
+                <p style="margin: 0 0 15px">
+                  Thank you for registering with us. Please use the code below
+                  to verify your email address:
+                </p>
+
+                <div style="text-align: center; margin: 25px 0">
+                  <span
+                    style="
+                      display: inline-block;
+                      background: #fff1f2;
+                      padding: 14px 26px;
+                      font-size: 22px;
+                      letter-spacing: 3px;
+                      font-weight: bold;
+                      color: #960018;
+                      border: 1px solid #960018;
+                      border-radius: 6px;
+                    "
+                  >
+                    {{ emailValidationToken }}
+                  </span>
+                </div>
+
+                <p style="margin: 0 0 15px">
+                  This code will expire soon. Please enter it in the app to
+                  complete your verification.
+                </p>
+
+                <p style="margin: 0 0 15px">
+                  If you did not create an account, no further action is
+                  required.
+                </p>
+
+                <p style="margin: 20px 0 0">
+                  Best regards,<br />
+                  <strong style="color: #960018">The Blivap Team</strong>
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding-top: 25px">
+                <hr style="border: none; border-top: 1px solid #e5e7eb" />
+              </td>
+            </tr>
+
+            <tr>
+              <td
+                style="
+                  padding-top: 10px;
+                  text-align: center;
+                  font-size: 12px;
+                  color: #9ca3af;
+                "
+              >
+                <p style="margin: 0">
+                  Need help? Contact our
+                  <a href="https://blivap.com/contact">support team</a>.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
 </html>
