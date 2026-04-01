@@ -11,6 +11,7 @@ import { RedisClientOptions } from 'redis';
 import { AppController } from './app.controller';
 import { AuthenticationModule } from './authentication/authentication.module';
 import { AvatarModule } from './avatar/avatar.module';
+import { NinVerificationModule } from './nin-verification/nin-verification.module';
 import config from './shared/config';
 import { HttpCacheInterceptor } from './shared/http-cache.interceptor';
 import { UserModule } from './user/user.module';
@@ -64,6 +65,7 @@ import { UserModule } from './user/user.module';
     UserModule,
     AuthenticationModule,
     AvatarModule,
+    NinVerificationModule,
   ],
   controllers: [AppController],
   providers: [
