@@ -1,12 +1,14 @@
 import { Cache } from '@nestjs/cache-manager';
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { compare } from 'bcryptjs';
 import * as moment from 'moment';
 
 import { NotificationService } from 'src/notification/services/notification.service';
 import { EmailTemplateID } from 'src/notification/types';
+import { DB_TABLE_NAMES } from 'src/shared/constants';
 import { User } from 'src/user/schemas/user.schema';
 import { UserService } from 'src/user/services/user.service';
 
@@ -16,7 +18,6 @@ jest.mock('bcryptjs');
 
 const userService = {
   find: jest.fn(),
-  findUserByResetToken: jest.fn(),
   updateOne: jest.fn(),
   createOne: jest.fn(),
 } as unknown as jest.Mocked<UserService>;
@@ -30,6 +31,12 @@ const cache = {
   get: jest.fn(),
   set: jest.fn(),
 } as unknown as jest.Mocked<Cache>;
+const passwordResetTokenModel = {
+  updateMany: jest.fn(),
+  create: jest.fn(),
+  findOne: jest.fn(),
+  updateOne: jest.fn(),
+};
 
 describe('AuthenticationService', () => {
   let service: AuthenticationService;
@@ -42,6 +49,10 @@ describe('AuthenticationService', () => {
         { provide: JwtService, useValue: jwtService },
         { provide: NotificationService, useValue: notificationService },
         { provide: Cache, useValue: cache },
+        {
+          provide: getModelToken(DB_TABLE_NAMES.passwordResetTokens),
+          useValue: passwordResetTokenModel,
+        },
       ],
     }).compile();
 
@@ -161,6 +172,20 @@ describe('AuthenticationService', () => {
         accessToken: 'token',
         accessTokenExpires: expect.any(Date),
       });
+      expect(notificationService.sendEmail).toHaveBeenCalledTimes(2);
+      expect(notificationService.sendEmail).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          templateId: EmailTemplateID.VERIFY_EMAIL_ADDRESS,
+        }),
+      );
+      expect(notificationService.sendEmail).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          templateId: EmailTemplateID.WELCOME_EMAIL,
+          subject: 'Welcome to Blivap',
+        }),
+      );
     });
 
     it('should throw ConflictException if email already exists', async () => {
@@ -254,7 +279,7 @@ describe('AuthenticationService', () => {
   describe('verifyEmail', () => {
     it('should verify user email with valid token', async () => {
       const user = {
-        id: '123',
+        id: '507f1f77bcf86cd799439011',
         email: 'test@test.com',
         emailValidationToken: 'ABC123',
       } as User;
@@ -288,32 +313,29 @@ describe('AuthenticationService', () => {
   describe('forgotPassword', () => {
     it('should send password reset email for existing user', async () => {
       const user = {
-        id: '123',
+        id: '507f1f77bcf86cd799439011',
         email: 'test@test.com',
         firstname: 'Test',
         lastname: 'User',
       } as User;
 
       userService.find.mockResolvedValue([user]);
-      userService.updateOne.mockResolvedValue(null);
+      passwordResetTokenModel.updateMany.mockResolvedValue({});
+      passwordResetTokenModel.create.mockResolvedValue({});
       notificationService.sendEmail = jest.fn();
 
       await service.forgotPassword({ email: user.email });
 
-      expect(userService.updateOne).toHaveBeenCalledWith(
-        { _id: user.id },
-        {
-          passwordResetCode: expect.any(String),
-          passwordResetCodeExpiresAt: expect.any(Date),
-        },
-      );
+      expect(passwordResetTokenModel.updateMany).toHaveBeenCalled();
+      expect(passwordResetTokenModel.create).toHaveBeenCalled();
       expect(notificationService.sendEmail).toHaveBeenCalledWith({
         subject: 'Password Reset',
         to: [{ email: user.email, name: `${user.firstname} ${user.lastname}` }],
         templateId: EmailTemplateID.RESET_PASSWORD,
         templateData: {
           name: user.firstname,
-          resetCode: expect.any(String),
+          resetLink: expect.any(String),
+          expiresInMinutes: 10,
         },
       });
     });
@@ -331,22 +353,29 @@ describe('AuthenticationService', () => {
   describe('resetPassword', () => {
     it('should reset password with valid token', async () => {
       const user = {
-        id: '123',
+        id: '507f1f77bcf86cd799439011',
         email: 'test@test.com',
       } as User;
 
-      userService.findUserByResetToken.mockResolvedValue(user);
+      passwordResetTokenModel.findOne.mockResolvedValue({
+        _id: 'tid',
+        userId: { toString: () => '123' },
+        used: false,
+        expiresAt: new Date(Date.now() + 600000),
+      });
       userService.updateOne.mockResolvedValue(null);
+      passwordResetTokenModel.updateOne.mockResolvedValue({});
       userService.find.mockResolvedValue([user]);
       jest.spyOn(service, 'getLoggedInUser').mockResolvedValue({
         user,
         accessToken: 'token',
         accessTokenExpires: new Date(),
       });
+      (compare as jest.Mock).mockResolvedValue(true);
 
       const result = await service.resetPassword({
-        resetToken: 'VALID_TOKEN',
-        password: 'newPassword',
+        resetToken: 'a'.repeat(64),
+        password: 'NewPassword1!',
       });
 
       expect(result).toEqual({
@@ -354,24 +383,25 @@ describe('AuthenticationService', () => {
         accessToken: 'token',
         accessTokenExpires: expect.any(Date),
       });
+      expect(passwordResetTokenModel.updateOne).toHaveBeenCalled();
     });
 
     it('should throw BadRequestException with invalid token', async () => {
-      userService.findUserByResetToken.mockResolvedValue(null);
+      passwordResetTokenModel.findOne.mockResolvedValue(null);
 
       await expect(
         service.resetPassword({
           resetToken: 'INVALID_TOKEN',
-          password: 'newPassword',
+          password: 'NewPassword1!',
         }),
-      ).rejects.toThrow('Invalid reset token');
+      ).rejects.toThrow('Invalid or unknown reset token');
     });
   });
 
   describe('editProfile', () => {
     it('should update user profile and return updated user', async () => {
       const user = {
-        id: '123',
+        id: '507f1f77bcf86cd799439011',
         email: 'test@test.com',
       } as User;
       const updateData = {
@@ -390,7 +420,7 @@ describe('AuthenticationService', () => {
   describe('changePassword', () => {
     it('should change password with valid old password', async () => {
       const user = {
-        id: '123',
+        id: '507f1f77bcf86cd799439011',
         email: 'test@test.com',
         password: 'oldPassword',
       } as User;
@@ -418,7 +448,7 @@ describe('AuthenticationService', () => {
 
     it('should throw BadRequestException with invalid old password', async () => {
       const user = {
-        id: '123',
+        id: '507f1f77bcf86cd799439011',
         email: 'test@test.com',
         password: 'oldPassword',
       } as User;
@@ -438,7 +468,7 @@ describe('AuthenticationService', () => {
   describe('me', () => {
     it('should return the current user', async () => {
       const user = {
-        id: '123',
+        id: '507f1f77bcf86cd799439011',
         email: 'test@test.com',
       } as User;
 

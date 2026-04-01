@@ -1,18 +1,25 @@
+import { createHash, randomBytes } from 'crypto';
+
 import { Cache } from '@nestjs/cache-manager';
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectModel } from '@nestjs/mongoose';
 import { hash, compare } from 'bcryptjs';
 import { pick } from 'lodash';
 import * as moment from 'moment';
+import { Model, Types } from 'mongoose';
 
 import { NotificationService } from 'src/notification/services/notification.service';
 import { EmailTemplateID } from 'src/notification/types';
+import config from 'src/shared/config';
+import { DB_TABLE_NAMES } from 'src/shared/constants';
 import { Util } from 'src/shared/util';
 import { User } from 'src/user/schemas/user.schema';
 import { UserService } from 'src/user/services/user.service';
@@ -25,7 +32,14 @@ import {
   SignupDTO,
   VerifyEmailDTO,
 } from '../dtos/authentication.dto';
+import { PasswordResetTokenDocument } from '../schemas/password-reset-token.schema';
 import { LoginPayload } from '../types';
+
+const PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
+
+function hashResetToken(raw: string): string {
+  return createHash('sha256').update(raw, 'utf8').digest('hex');
+}
 
 @Injectable()
 export class AuthenticationService {
@@ -36,6 +50,8 @@ export class AuthenticationService {
     private readonly jwtService: JwtService,
     private readonly notificationService: NotificationService,
     private readonly cache: Cache,
+    @InjectModel(DB_TABLE_NAMES.passwordResetTokens)
+    private readonly passwordResetTokenModel: Model<PasswordResetTokenDocument>,
   ) {}
 
   async login(payload: LoginPayload) {
@@ -127,6 +143,7 @@ export class AuthenticationService {
     });
 
     this.sendEmailVerificationLink(newUser);
+    this.sendWelcomeEmail(newUser);
 
     this.logger.log('Successful signup', {
       payload: { ...payload, password: '' },
@@ -148,6 +165,21 @@ export class AuthenticationService {
         },
       });
     }
+  }
+
+  /** Queues welcome email for new accounts (uses CLIENT_BASE_URL for app link). */
+  sendWelcomeEmail(user: User) {
+    const appUrl = config().client.baseUrl || 'https://blivap.com';
+
+    this.notificationService.sendEmail({
+      subject: 'Welcome to Blivap',
+      to: [{ email: user.email, name: `${user.firstname} ${user.lastname}` }],
+      templateId: EmailTemplateID.WELCOME_EMAIL,
+      templateData: {
+        name: user.firstname,
+        appUrl,
+      },
+    });
   }
 
   async resendEmailVerification(email: string) {
@@ -180,62 +212,118 @@ export class AuthenticationService {
     );
   }
 
-  async forgotPassword(payload: ForgotPasswordDTO) {
-    const [user] = await this.userService.find({
-      email: payload.email.trim().toLowerCase(),
-    });
+  /**
+   * Request a password reset email with a single-use link (10-minute expiry).
+   * Same generic outcome whether or not the email is registered (no enumeration).
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    const normalized = email.trim().toLowerCase();
+    const [user] = await this.userService.find({ email: normalized });
 
     if (!user) {
       return;
     }
 
-    const resetCode = Util.generateRandomString(8).toUpperCase();
-    await this.userService.updateOne(
-      { _id: user.id },
-      {
-        passwordResetCode: resetCode,
-        passwordResetCodeExpiresAt: moment().add(1, 'hour').toDate(),
-      },
+    await this.passwordResetTokenModel.updateMany(
+      { userId: new Types.ObjectId(user.id), used: false },
+      { $set: { used: true } },
     );
 
-    const [userAfterUpdate] = await this.userService.find({
-      _id: user.id,
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = hashResetToken(rawToken);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+
+    await this.passwordResetTokenModel.create({
+      userId: new Types.ObjectId(user.id),
+      tokenHash,
+      expiresAt,
+      used: false,
     });
+
+    const baseUrl = config().passwordReset.frontendBaseUrl;
+    if (!baseUrl && config().isProd) {
+      this.logger.error(
+        'CLIENT_BASE_URL / FRONTEND_URL / PASSWORD_RESET_BASE_URL is not set; cannot build password reset link',
+      );
+    }
+
+    const resetLink = baseUrl
+      ? `${baseUrl}/reset-password?token=${encodeURIComponent(rawToken)}`
+      : `#reset-password?token=${encodeURIComponent(rawToken)}`;
 
     await this.notificationService.sendEmail({
       to: [
         {
-          email: userAfterUpdate.email,
-          name: `${userAfterUpdate.firstname} ${userAfterUpdate.lastname}`,
+          email: user.email,
+          name: `${user.firstname} ${user.lastname}`,
         },
       ],
       subject: 'Password Reset',
       templateId: EmailTemplateID.RESET_PASSWORD,
-      templateData: { resetCode, name: user.firstname },
+      templateData: {
+        name: user.firstname,
+        resetLink,
+        expiresInMinutes: 10,
+      },
     });
   }
 
-  async resetPassword(payload: ResetPasswordDTO) {
-    let user = await this.userService.findUserByResetToken(payload.resetToken);
+  async forgotPassword(payload: ForgotPasswordDTO) {
+    await this.requestPasswordReset(payload.email);
+  }
 
-    if (!user) {
-      throw new BadRequestException('Invalid reset token');
+  /**
+   * Complete password reset using opaque token from email link (hashed in DB).
+   */
+  async resetPasswordWithToken(payload: {
+    token: string;
+    newPassword: string;
+  }) {
+    const tokenHash = hashResetToken(payload.token);
+    const tokenDoc = await this.passwordResetTokenModel.findOne({ tokenHash });
+
+    if (!tokenDoc) {
+      throw new BadRequestException('Invalid or unknown reset token');
     }
 
-    const password = await hash(payload.password, 8);
+    if (tokenDoc.used) {
+      throw new ConflictException(
+        'This password reset link has already been used',
+      );
+    }
+
+    if (tokenDoc.expiresAt.getTime() <= Date.now()) {
+      throw new GoneException('This password reset link has expired');
+    }
+
+    const hashedPassword = await hash(payload.newPassword, 8);
 
     await this.userService.updateOne(
-      { _id: user.id },
-      { password },
+      { _id: tokenDoc.userId.toString() },
+      { password: hashedPassword },
       {
         passwordResetCode: true,
         passwordResetCodeExpiresAt: true,
       },
     );
 
-    [user] = await this.userService.find({ _id: user.id });
+    await this.passwordResetTokenModel.updateOne(
+      { _id: tokenDoc._id },
+      { $set: { used: true } },
+    );
+
+    const [user] = await this.userService.find({
+      _id: tokenDoc.userId.toString(),
+    });
 
     return this.getLoggedInUser(user);
+  }
+
+  async resetPassword(payload: ResetPasswordDTO) {
+    return this.resetPasswordWithToken({
+      token: payload.resetToken,
+      newPassword: payload.password,
+    });
   }
 
   async editProfile(user: User, payload: EditProfileDTO) {
@@ -257,9 +345,9 @@ export class AuthenticationService {
 
     await this.userService.updateOne({ _id: user.id }, { password });
 
-    [user] = await this.userService.find({ _id: user.id });
+    const [updatedUser] = await this.userService.find({ _id: user.id });
 
-    return this.getLoggedInUser(user);
+    return this.getLoggedInUser(updatedUser);
   }
 
   async me(user: User) {

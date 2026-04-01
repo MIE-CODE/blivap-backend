@@ -5,4 +5,5 @@ export const QUEUE_NAMES = {
 
 export const DB_TABLE_NAMES = {
   users: 'users',
+  passwordResetTokens: 'passwordResetTokens',
 } as const;

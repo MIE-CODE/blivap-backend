@@ -1,5 +1,5 @@
 import { PickType, PartialType } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsEmail } from 'class-validator';
+import { IsString, IsNotEmpty, IsEmail, Matches } from 'class-validator';
 
 import { User } from 'src/user/schemas/user.schema';
 
@@ -21,10 +21,30 @@ export class ForgotPasswordDTO {
   email: string;
 }
 
+export class RequestPasswordResetDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+}
+
 export class ResetPasswordDTO extends PickType(User, ['password']) {
   @IsString()
   @IsNotEmpty()
   resetToken: string;
+}
+
+export class ResetPasswordWithTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*\W)[A-Za-z\d\W]{8,}$/, {
+    message:
+      'Password must be at least 8 characters long, include at least one uppercase letter, one lowercase letter, one number, and one special character.',
+  })
+  newPassword: string;
 }
 
 export class EditProfileDTO extends PartialType(

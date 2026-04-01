@@ -41,11 +41,4 @@ export class UserService {
   async createOne(payload: User): Promise<User> {
     return this.users.create(payload);
   }
-
-  async findUserByResetToken(resetToken: string): Promise<User | null> {
-    return this.users.findOne({
-      passwordResetCode: resetToken,
-      passwordResetCodeExpiresAt: { $gt: new Date() },
-    });
-  }
 }
