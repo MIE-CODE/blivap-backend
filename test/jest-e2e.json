@@ -11,5 +11,5 @@
   },
   "setupFiles": ["<rootDir>/setup-env.ts"],
   "globalTeardown": "<rootDir>/teardown-env.ts",
-  "roots": ["<rootDir>/", "<rootDir>/../src/"]
+  "roots": ["<rootDir>/"]
 }

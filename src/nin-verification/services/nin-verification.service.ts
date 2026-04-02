@@ -145,7 +145,7 @@ export class NinVerificationService {
    * Step 3: Regex-based parsing for NIN (11 digits), names, and DOB.
    */
   private parseNinFields(raw: string): ExtractedNinData | null {
-    const text = raw.replace(/\r\n/g, '\n');
+    const text = this.normalizeExtractedText(raw.replace(/\r\n/g, '\n'));
 
     const nin = this.extractNin(text);
     const firstName = this.extractFirstName(text);
@@ -159,12 +159,20 @@ export class NinVerificationService {
     return { nin, firstName, lastName, dateOfBirth };
   }
 
+  /** Collapse whitespace and trim so OCR/layout noise is easier to parse. */
+  private normalizeExtractedText(raw: string): string {
+    return raw.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   private extractNin(text: string): string | null {
     const labeled = text.match(
-      /(?:NIN|National\s+Identification\s+Number)\s*[#:.\s-]*(\d{11})\b/i,
+      /(?:N\.?\s*I\.?\s*N\.?|NIN|National\s+Identification\s+Number)\s*[#:.\s-]*(\d[\d\s]{9,14}\d)/i,
     );
-    if (labeled) {
-      return labeled[1];
+    if (labeled?.[1]) {
+      const digits = labeled[1].replace(/\D/g, '');
+      if (digits.length === 11) {
+        return digits;
+      }
     }
 
     const standalone = text.match(/\b(\d{11})\b/);
@@ -172,50 +180,68 @@ export class NinVerificationService {
   }
 
   private extractLastName(text: string): string | null {
-    const raw =
-      text
-        .match(
-          /(?:Surname|Last\s*Name|Family\s*Name)\s*[#:.\s-]+\s*([^\n\r]+)/i,
-        )?.[1]
-        ?.trim()
-        .replace(/\s+/g, ' ') ?? '';
+    const patterns = [
+      /(?:Surname|Last\s*Name|Family\s*Name)\s*[#:.\s|-]+\s*([^\n\r]+?)(?=\s*(?:First\s*Name|Given\s*Name|Date|$))/i,
+      /(?:Surname|Last\s*Name|Family\s*Name)\s*[#:.\s|-]+\s*([^\n\r]+)/i,
+    ];
 
-    return raw.length ? raw : null;
+    for (const re of patterns) {
+      const raw =
+        text.match(re)?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
+      if (raw.length) {
+        return raw;
+      }
+    }
+
+    return null;
   }
 
+  /**
+   * NIMC slips use "First Name" and separate "Other Name(s)" for middle names.
+   * Do not read "Other Names" as the first name.
+   */
   private extractFirstName(text: string): string | null {
-    const raw =
-      text
-        .match(
-          /(?:First\s*Name|Given\s*Name|Other\s*Names?)\s*[#:.\s-]+\s*([^\n\r]+)/i,
-        )?.[1]
-        ?.trim()
-        .replace(/\s+/g, ' ') ?? '';
+    const patterns = [
+      /(?:First\s*Name|Given\s*Name)\s*[#:.\s|-]+\s*([^\n\r]+?)(?=\s*(?:Other\s*Names?|Middle\s*Name|Surname|Date|$))/i,
+      /(?:First\s*Name|Given\s*Name)\s*[#:.\s|-]+\s*([^\n\r]+)/i,
+    ];
 
-    return raw.length ? raw : null;
+    for (const re of patterns) {
+      const raw =
+        text.match(re)?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
+      if (raw.length) {
+        return raw;
+      }
+    }
+
+    return null;
   }
 
   private extractDob(text: string): Date | null {
     const labeled = text.match(
-      /(?:Date\s*of\s*Birth|DOB|Birth\s*Date)\s*[#:.\s-]+\s*(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/i,
+      /(?:Date\s*of\s*Birth|D\.?\s*O\.?\s*B\.?|Birth\s*Date)\s*[#:.\s|-]+\s*(\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{1,2}-\d{1,2})/i,
     );
 
     if (labeled?.[1]) {
       return this.parseDobString(labeled[1]);
     }
 
-    const slash = text.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
+    const slash = text.match(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/);
     if (slash) {
       return this.parseDobString(slash[1]);
     }
 
-    const iso = text.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+    const iso = text.match(/\b(\d{4}-\d{1,2}-\d{1,2})\b/);
     return iso ? this.parseDobString(iso[1]) : null;
   }
 
   private parseDobString(s: string): Date | null {
     if (s.includes('/')) {
-      const [d, m, y] = s.split('/').map(Number);
+      const parts = s.split('/').map((p) => Number(p.trim()));
+      if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) {
+        return null;
+      }
+      const [d, m, y] = parts;
       if (!d || !m || !y) {
         return null;
       }
@@ -223,7 +249,11 @@ export class NinVerificationService {
       return new Date(Date.UTC(y, m - 1, d));
     }
 
-    const [y, m, d] = s.split('-').map(Number);
+    const parts = s.split('-').map((p) => Number(p.trim()));
+    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) {
+      return null;
+    }
+    const [y, m, d] = parts;
     if (!d || !m || !y) {
       return null;
     }
@@ -232,19 +262,56 @@ export class NinVerificationService {
   }
 
   private normalizeName(s: string): string {
-    return s.trim().toLowerCase().replace(/\s+/g, ' ');
+    return s
+      .normalize('NFKC')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/[…\.]+$/u, '')
+      .trim();
+  }
+
+  /**
+   * Same person as profile: exact match, or prefix match when the slip truncates
+   * long names or OCR drops trailing characters (min length guards false positives).
+   */
+  private nameMatchesProfile(fromDoc: string, fromProfile: string): boolean {
+    const a = this.normalizeName(fromDoc);
+    const b = this.normalizeName(fromProfile);
+    if (!a.length || !b.length) {
+      return false;
+    }
+    if (a === b) {
+      return true;
+    }
+    const minLen = Math.min(a.length, b.length);
+    if (minLen < 3) {
+      return false;
+    }
+    return a.startsWith(b) || b.startsWith(a);
   }
 
   /**
    * Step 4: Compare extracted identity with the authenticated user record.
+   * If the user already saved an 11-digit NIN, it must match the document.
    */
   private fieldsMatchUser(extracted: ExtractedNinData, user: User): boolean {
-    const firstOk =
-      this.normalizeName(extracted.firstName) ===
-      this.normalizeName(user.firstname ?? '');
-    const lastOk =
-      this.normalizeName(extracted.lastName) ===
-      this.normalizeName(user.lastname ?? '');
+    const existingNin = (user.nationalIdentificationNumber ?? '').replace(
+      /\D/g,
+      '',
+    );
+    if (existingNin.length === 11 && existingNin !== extracted.nin) {
+      return false;
+    }
+
+    const firstOk = this.nameMatchesProfile(
+      extracted.firstName,
+      user.firstname ?? '',
+    );
+    const lastOk = this.nameMatchesProfile(
+      extracted.lastName,
+      user.lastname ?? '',
+    );
     const dobOk =
       moment(extracted.dateOfBirth).format('YYYY-MM-DD') ===
       moment(user.dateOfBirth).format('YYYY-MM-DD');

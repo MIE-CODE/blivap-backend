@@ -1,9 +1,14 @@
+import { createHash } from 'crypto';
+
 import { INestApplication } from '@nestjs/common';
+import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { hashSync } from 'bcryptjs';
 import * as moment from 'moment';
+import { Types } from 'mongoose';
 import * as request from 'supertest';
 
+import { PasswordResetTokenDocument } from 'src/authentication/schemas/password-reset-token.schema';
 import { bootstrap } from 'src/bootstrap';
 import { Model } from 'src/database/schemas';
 import { DB_TABLE_NAMES } from 'src/shared/constants';
@@ -11,10 +16,15 @@ import { UserDocument } from 'src/user/schemas/user.schema';
 
 import { AppModule } from './../src/app.module';
 
+function hashResetToken(raw: string): string {
+  return createHash('sha256').update(raw, 'utf8').digest('hex');
+}
+
 describe('AuthenticationController (e2e)', () => {
   let moduleFixture: TestingModule;
   let app: INestApplication;
   let userModel: Model<UserDocument>;
+  let passwordResetTokenModel: Model<PasswordResetTokenDocument>;
 
   beforeAll(async () => {
     moduleFixture = await Test.createTestingModule({
@@ -25,6 +35,9 @@ describe('AuthenticationController (e2e)', () => {
 
     userModel = moduleFixture.get<typeof userModel>(
       `${DB_TABLE_NAMES.users}Model`,
+    );
+    passwordResetTokenModel = moduleFixture.get(
+      getModelToken(DB_TABLE_NAMES.passwordResetTokens),
     );
 
     await bootstrap(app, 0);
@@ -218,6 +231,10 @@ describe('AuthenticationController (e2e)', () => {
     });
 
     afterAll(async () => {
+      const user = await userModel.findOne({ email: testEmail });
+      if (user) {
+        await passwordResetTokenModel.deleteMany({ userId: user._id });
+      }
       await userModel.deleteMany({ email: testEmail });
     });
 
@@ -229,17 +246,13 @@ describe('AuthenticationController (e2e)', () => {
       expect(response.status).toBe(200);
       expect(response.body.message).toBe('success');
 
-      // Give it a second to update the user
-      await new Promise((resolve) => {
-        setTimeout(resolve, 1000);
-      });
-
       const user = await userModel.findOne({ email: testEmail });
-      expect(user.passwordResetCode).toBeDefined();
-      expect(user.passwordResetCodeExpiresAt).toBeDefined();
-      expect(moment(user.passwordResetCodeExpiresAt).isAfter(moment())).toBe(
-        true,
-      );
+      const pendingToken = await passwordResetTokenModel.findOne({
+        userId: new Types.ObjectId(user.id),
+        used: false,
+      });
+      expect(pendingToken).toBeDefined();
+      expect(moment(pendingToken.expiresAt).isAfter(moment())).toBe(true);
     });
 
     it('should not send email for non-existent user', async () => {
@@ -266,23 +279,61 @@ describe('AuthenticationController (e2e)', () => {
 
   describe('POST /authentication/reset-password', () => {
     const testEmail = 'reset-password-test@example.com';
+    const rawResetToken = 'c'.repeat(64);
     let resetToken: string;
 
     beforeAll(async () => {
+      const existing = await userModel.findOne({ email: testEmail });
+      if (existing) {
+        await passwordResetTokenModel.deleteMany({ userId: existing._id });
+      }
       await userModel.deleteMany({ email: testEmail });
       const user = await userModel.create({
         email: testEmail,
         password: hashSync('oldPassword', 10),
         firstname: 'John',
         lastname: 'Doe',
-        passwordResetCode: 'RESET123',
-        passwordResetCodeExpiresAt: moment().add(1, 'hour').toDate(),
       });
-      resetToken = user.passwordResetCode;
+      resetToken = rawResetToken;
+      await passwordResetTokenModel.create({
+        userId: new Types.ObjectId(user.id),
+        tokenHash: hashResetToken(rawResetToken),
+        expiresAt: moment().add(1, 'hour').toDate(),
+        used: false,
+      });
     });
 
     afterAll(async () => {
+      await passwordResetTokenModel.deleteMany({});
       await userModel.deleteMany({ email: testEmail });
+    });
+
+    it('should not accept invalid password', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/authentication/reset-password')
+        .send({
+          resetToken,
+          password: 'weak',
+        });
+
+      expect(response.status).toBe(422);
+      expect(response.body.errors).toBeDefined();
+      expect(response.body.errors).toEqual({
+        password:
+          'Password must be at least 8 characters long, include at least one uppercase letter, one lowercase letter, one number, and one special character.',
+      });
+    });
+
+    it('should not reset password with invalid token', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/authentication/reset-password')
+        .send({
+          resetToken: 'INVALID_TOKEN',
+          password: 'NewPassword123!',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe('Invalid or unknown reset token');
     });
 
     it('should reset password with valid token', async () => {
@@ -302,34 +353,6 @@ describe('AuthenticationController (e2e)', () => {
       const user = await userModel.findOne({ email: testEmail });
       expect(user.passwordResetCode).toBeNull();
       expect(user.passwordResetCodeExpiresAt).toBeNull();
-    });
-
-    it('should not reset password with invalid token', async () => {
-      const response = await request(app.getHttpServer())
-        .post('/authentication/reset-password')
-        .send({
-          resetToken: 'INVALID_TOKEN',
-          password: 'NewPassword123!',
-        });
-
-      expect(response.status).toBe(400);
-      expect(response.body.message).toBe('Invalid reset token');
-    });
-
-    it('should not accept invalid password', async () => {
-      const response = await request(app.getHttpServer())
-        .post('/authentication/reset-password')
-        .send({
-          resetToken,
-          password: 'weak',
-        });
-
-      expect(response.status).toBe(422);
-      expect(response.body.errors).toBeDefined();
-      expect(response.body.errors).toEqual({
-        password:
-          'Password must be at least 8 characters long, include at least one uppercase letter, one lowercase letter, one number, and one special character.',
-      });
     });
   });
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention -- Cloudinary API mocks use external property names */
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 

@@ -54,7 +54,6 @@ describe('UserService', () => {
       const mockQuery = Promise.resolve(expectedResult);
       const mockSelect = jest.fn().mockReturnValue(mockQuery);
 
-      // Make the promise have a select method (Mongoose query pattern)
       (mockQuery as unknown as { select: jest.Mock }).select = mockSelect;
 
       userModel.find.mockReturnValue(
@@ -321,5 +320,4 @@ describe('UserService', () => {
       expect(userModel.create).toHaveBeenCalledWith(userData);
     });
   });
-
 });

@@ -41,7 +41,6 @@ describe('NotificationService', () => {
   let service: NotificationService;
 
   beforeEach(async () => {
-    // Mock config properly
     (config as jest.Mock).mockReturnValue({
       resend: { fromEmail: 'default@example.com', apiKey: 'test-api-key' },
     });
@@ -66,7 +65,6 @@ describe('NotificationService', () => {
 
     service = module.get<NotificationService>(NotificationService);
 
-    // Use jest.spyOn to mock the sendWithResend method
     jest
       .spyOn(
         service as unknown as { sendWithResend: jest.Mock },
@@ -92,14 +90,11 @@ describe('NotificationService', () => {
       const templateContent = '<html>{{ name }}</html>';
       const renderedHtml = '<html>Test</html>';
 
-      // Mock dependencies
       (readFileSync as jest.Mock).mockReturnValue(templateContent);
       (nunjucks.renderString as jest.Mock).mockReturnValue(renderedHtml);
 
-      // Call function
       await service.processEmail(payload);
 
-      // Assertions
       expect(readFileSync).toHaveBeenCalledWith(
         expect.stringContaining('test-template'),
         'utf-8',
@@ -120,7 +115,6 @@ describe('NotificationService', () => {
       const templateContent = '<html>{{ name }}</html>';
       const renderedHtml = '<html>Test</html>';
 
-      // Mock dependencies
       (readFileSync as jest.Mock).mockReturnValue(templateContent);
       (nunjucks.renderString as jest.Mock).mockReturnValue(renderedHtml);
 

@@ -34,9 +34,11 @@ describe('AvatarController (e2e)', () => {
     'https://res.cloudinary.com/test/image/upload/v1/avatars/avatar3.jpg';
   const mockAvatarService = {
     getAvatars: jest.fn().mockResolvedValue(mockAvatars),
-    updateAvatar: jest.fn().mockImplementation((_user, profileImage: string) =>
-      Promise.resolve({ profileImage }),
-    ),
+    updateAvatar: jest
+      .fn()
+      .mockImplementation((_user, profileImage: string) =>
+        Promise.resolve({ profileImage }),
+      ),
   };
 
   beforeAll(async () => {
@@ -48,7 +50,9 @@ describe('AvatarController (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication<INestApplication>();
-    userModel = moduleFixture.get<typeof userModel>(`${DB_TABLE_NAMES.users}Model`);
+    userModel = moduleFixture.get<typeof userModel>(
+      `${DB_TABLE_NAMES.users}Model`,
+    );
 
     await bootstrap(app, 0);
 
