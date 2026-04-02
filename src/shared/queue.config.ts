@@ -45,3 +45,16 @@ export const pushNotificationQueueConfig = {
     },
   },
 };
+
+export const webPushQueueConfig = {
+  ...defaultQueueConfig,
+  name: QUEUE_NAMES.webPush,
+  defaultJobOptions: {
+    ...defaultQueueConfig.defaultJobOptions,
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 1000,
+    },
+  },
+};

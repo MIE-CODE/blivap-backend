@@ -41,4 +41,8 @@ export class UserService {
   async createOne(payload: User): Promise<User> {
     return this.users.create(payload);
   }
+
+  async findById(id: string): Promise<UserDocument | null> {
+    return this.users.findById(id).exec();
+  }
 }

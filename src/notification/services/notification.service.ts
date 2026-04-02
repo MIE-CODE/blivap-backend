@@ -2,16 +2,21 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 import { InjectQueue } from '@nestjs/bullmq';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import * as admin from 'firebase-admin';
 import * as nunjucks from 'nunjucks';
 import { Resend } from 'resend';
+import * as webpush from 'web-push';
 
 import config from 'src/shared/config';
 import { QUEUE_NAMES } from 'src/shared/constants';
 
-import { EmailPayload, PushNotificationPayload } from '../types';
+import {
+  EmailPayload,
+  PushNotificationPayload,
+  WebPushJobPayload,
+} from '../types';
 
 @Injectable()
 export class NotificationService {
@@ -21,8 +26,10 @@ export class NotificationService {
     @InjectQueue(QUEUE_NAMES.email) private readonly emailQueue: Queue,
     @InjectQueue(QUEUE_NAMES.pushNotification)
     private readonly pushNotificationQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.webPush) private readonly webPushQueue: Queue,
+    @Optional()
     @Inject(admin.app.name)
-    private readonly firebaseAdmin: admin.app.App,
+    private readonly firebaseAdmin: admin.app.App | null,
   ) {}
 
   async sendEmail(payload: EmailPayload) {
@@ -68,7 +75,57 @@ export class NotificationService {
     }
   }
 
+  async sendWebPush(payload: WebPushJobPayload) {
+    try {
+      await this.webPushQueue.add('send-web-push', payload);
+      this.logger.log('Web push job added to queue');
+    } catch (error) {
+      this.logger.error('Failed to add web push job', {
+        error: error.message,
+        stack: error.stack,
+      });
+      throw error;
+    }
+  }
+
+  async processWebPush(payload: WebPushJobPayload) {
+    const wp = config().webPush;
+    if (!wp.publicKey || !wp.privateKey) {
+      this.logger.warn('Web push skipped: VAPID keys not configured');
+      return;
+    }
+    webpush.setVapidDetails(wp.subject, wp.publicKey, wp.privateKey);
+
+    const body = JSON.stringify({
+      title: payload.title,
+      body: payload.body,
+      data: payload.data ?? {},
+    });
+
+    for (const sub of payload.subscriptions) {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: sub.keys,
+          },
+          body,
+        );
+      } catch (e) {
+        this.logger.warn('Web push send failed', {
+          endpoint: sub.endpoint?.slice(0, 48),
+          message: e.message,
+        });
+      }
+    }
+  }
+
   async processPushNotification(payload: PushNotificationPayload) {
+    if (!this.firebaseAdmin) {
+      this.logger.warn('FCM skipped: Firebase not configured');
+      return [];
+    }
+
     const messages = payload.deviceTokens.map((token) => ({
       notification: {
         title: payload.title,

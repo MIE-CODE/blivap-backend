@@ -12,6 +12,7 @@ import {
 import { Document, SchemaTypes } from 'mongoose';
 
 import { BaseSchema, Schema } from 'src/database/schemas';
+import { UserRole } from 'src/shared/domain/enums';
 
 export type UserDocument = User & Document;
 
@@ -28,10 +29,19 @@ export type UserDocument = User & Document;
       delete ret['passwordResetCodeExpiresAt'];
       delete ret['nationalIdentificationNumberVerificationResponses'];
       delete ret['nationalIdentificationNumberVerificationAttempts'];
+      delete ret['nationalIdentificationNumber'];
+      delete ret['nationalIdentificationNumberHash'];
+      delete ret['nationalIdentificationNumberEnc'];
     },
   },
 })
 export class User extends BaseSchema {
+  @Prop({
+    type: [String],
+    enum: UserRole,
+    default: [UserRole.User],
+  })
+  roles?: UserRole[];
   @IsString()
   @IsNotEmpty()
   @Prop({ required: true })
@@ -91,6 +101,14 @@ export class User extends BaseSchema {
   @IsOptional()
   @Prop({ default: null })
   nationalIdentificationNumber?: string;
+
+  /** HMAC-SHA256 hex for duplicate detection; not exposed in JSON */
+  @Prop({ default: null, sparse: true, unique: true })
+  nationalIdentificationNumberHash?: string | null;
+
+  /** AES-256-GCM payload (base64); not exposed in JSON */
+  @Prop({ default: null })
+  nationalIdentificationNumberEnc?: string | null;
 
   @Prop({ default: false })
   nationalIdentificationNumberVerified?: boolean;

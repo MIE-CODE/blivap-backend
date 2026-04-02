@@ -24,6 +24,10 @@ const mockPushNotificationQueue = {
   add: jest.fn(),
 };
 
+const mockWebPushQueue = {
+  add: jest.fn(),
+};
+
 const mockFirebaseAdmin = {
   messaging: jest.fn(() => ({
     send: jest.fn().mockResolvedValue({ success: true }),
@@ -55,6 +59,10 @@ describe('NotificationService', () => {
         {
           provide: 'BullQueue_pushNotificationQueue',
           useValue: mockPushNotificationQueue,
+        },
+        {
+          provide: 'BullQueue_webPushQueue',
+          useValue: mockWebPushQueue,
         },
         {
           provide: 'app',

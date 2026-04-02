@@ -23,7 +23,7 @@ describe('NinVerificationController (e2e)', () => {
     verifyUploadedPdf: jest.fn().mockImplementation(() =>
       Promise.resolve(
         Response.json('NIN verified successfully', {
-          nationalIdentificationNumber: '12345678901',
+          nationalIdentificationNumberLast4: '8901',
           nationalIdentificationNumberVerified: true,
         }),
       ),
@@ -90,7 +90,7 @@ describe('NinVerificationController (e2e)', () => {
       expect(response.status).toBe(201);
       expect(response.body.message).toBe('NIN verified successfully');
       expect(response.body.data).toEqual({
-        nationalIdentificationNumber: '12345678901',
+        nationalIdentificationNumberLast4: '8901',
         nationalIdentificationNumberVerified: true,
       });
       expect(mockNinVerificationService.verifyUploadedPdf).toHaveBeenCalled();

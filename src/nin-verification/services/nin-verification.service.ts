@@ -1,21 +1,29 @@
 import { promises as fs } from 'fs';
 
 import {
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   Logger,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as moment from 'moment';
 import { PDFParse } from 'pdf-parse';
 import * as tesseract from 'tesseract.js';
 
+import config from 'src/shared/config';
+import {
+  deriveKeyFromSecret,
+  encryptNin,
+  hmacNinHash,
+} from 'src/shared/crypto/identity-crypto';
 import { Response, ResponseObject } from 'src/shared/response';
 import { User } from 'src/user/schemas/user.schema';
 import { UserService } from 'src/user/services/user.service';
 
 export type NinVerificationSuccess = {
-  nationalIdentificationNumber: string;
+  nationalIdentificationNumberLast4: string;
   nationalIdentificationNumberVerified: boolean;
 };
 
@@ -30,7 +38,10 @@ type ExtractedNinData = {
 export class NinVerificationService {
   private readonly logger = new Logger(NinVerificationService.name);
 
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly events: EventEmitter2,
+  ) {}
 
   /**
    * End-to-end: read temp file, extract & parse NIN data, match user, update DB.
@@ -67,21 +78,47 @@ export class NinVerificationService {
       }
 
       if (!this.fieldsMatchUser(extracted, user)) {
+        this.events.emit('verification.rejected', {
+          userId: user.id,
+          reason: 'profile_mismatch',
+        });
         throw new UnprocessableEntityException(
           'Verification failed: Extracted NIN information does not match user data',
         );
       }
 
+      const cfg = config();
+      const hash = hmacNinHash(extracted.nin, cfg.identity.ninHmacSecret);
+      const [holder] = await this.userService.find({
+        nationalIdentificationNumberHash: hash,
+      });
+      if (holder && holder.id !== user.id) {
+        this.events.emit('verification.rejected', {
+          userId: user.id,
+          reason: 'duplicate_identity',
+        });
+        throw new ConflictException(
+          'This national identification number is already registered',
+        );
+      }
+
+      const key = deriveKeyFromSecret(cfg.identity.ninEncryptionSecret);
+      const enc = encryptNin(extracted.nin, key);
+
       await this.userService.updateOne(
         { _id: user.id },
         {
-          nationalIdentificationNumber: extracted.nin,
+          nationalIdentificationNumberHash: hash,
+          nationalIdentificationNumberEnc: enc,
           nationalIdentificationNumberVerified: true,
         },
+        { nationalIdentificationNumber: true },
       );
 
+      this.events.emit('verification.approved', { userId: user.id });
+
       return Response.json('NIN verified successfully', {
-        nationalIdentificationNumber: extracted.nin,
+        nationalIdentificationNumberLast4: extracted.nin.slice(-4),
         nationalIdentificationNumberVerified: true,
       });
     } finally {
@@ -161,7 +198,10 @@ export class NinVerificationService {
 
   /** Collapse whitespace and trim so OCR/layout noise is easier to parse. */
   private normalizeExtractedText(raw: string): string {
-    return raw.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    return raw
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   private extractNin(text: string): string | null {
@@ -186,8 +226,7 @@ export class NinVerificationService {
     ];
 
     for (const re of patterns) {
-      const raw =
-        text.match(re)?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
+      const raw = text.match(re)?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
       if (raw.length) {
         return raw;
       }
@@ -207,8 +246,7 @@ export class NinVerificationService {
     ];
 
     for (const re of patterns) {
-      const raw =
-        text.match(re)?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
+      const raw = text.match(re)?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
       if (raw.length) {
         return raw;
       }

@@ -66,3 +66,13 @@ export type PushNotificationPayload = {
   deviceTokens: string[];
   data?: { [key: string]: string };
 };
+
+export type WebPushJobPayload = {
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+  subscriptions: Array<{
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+  }>;
+};

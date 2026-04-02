@@ -62,5 +62,23 @@ export default () => {
     isStaging: process.env.NODE_ENV === 'staging',
     isDev: !process.env.NODE_ENV || process.env.NODE_ENV === 'development',
     isTest: process.env.NODE_ENV === 'test',
+    identity: {
+      /** HMAC secret for NIN hash (duplicate detection). Falls back to JWT secret in dev. */
+      ninHmacSecret:
+        process.env.NIN_HMAC_SECRET || process.env.JWT_SECRET || 'test-nin-hmac',
+      /** Min 32 chars recommended; used to derive AES-256 key for encrypted NIN storage. */
+      ninEncryptionSecret:
+        process.env.NIN_ENCRYPTION_SECRET ||
+        process.env.JWT_SECRET ||
+        'test-nin-encryption-secret-min-32-chars!!',
+    },
+    webPush: {
+      publicKey: process.env.VAPID_PUBLIC_KEY || '',
+      privateKey: process.env.VAPID_PRIVATE_KEY || '',
+      subject: process.env.VAPID_SUBJECT || 'mailto:support@blivap.com',
+    },
+    matching: {
+      defaultMaxDistanceMeters: Number(process.env.MATCH_MAX_DISTANCE_M) || 100_000,
+    },
   };
 };
