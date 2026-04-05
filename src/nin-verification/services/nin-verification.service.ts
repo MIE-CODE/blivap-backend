@@ -48,6 +48,12 @@ export class NinVerificationService {
     filePath: string,
   ): Promise<ResponseObject<NinVerificationSuccess>> {
     try {
+      if (user.nationalIdentificationNumberVerified === true) {
+        throw new ConflictException(
+          'National identification number is already verified',
+        );
+      }
+
       let buffer: Buffer;
 
       try {
