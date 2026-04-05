@@ -11,10 +11,13 @@ import { compare } from 'bcryptjs';
 import * as moment from 'moment';
 
 import { AuthenticationService } from 'src/authentication/services/authentication.service';
+import { InAppNotification } from 'src/notification/schemas/in-app-notification.schema';
+import { InAppNotificationService } from 'src/notification/services/in-app-notification.service';
 import { NotificationService } from 'src/notification/services/notification.service';
 import { EmailTemplateID } from 'src/notification/types';
 import config from 'src/shared/config';
 import { DB_TABLE_NAMES } from 'src/shared/constants';
+import { NotificationEventType } from 'src/shared/domain/enums';
 import { User } from 'src/user/schemas/user.schema';
 import { UserService } from 'src/user/services/user.service';
 
@@ -42,6 +45,9 @@ const jwtService = {
 const notificationService = {
   sendEmail: jest.fn(),
 } as unknown as jest.Mocked<NotificationService>;
+const inAppNotificationService = {
+  create: jest.fn().mockResolvedValue({} as InAppNotification),
+} as unknown as jest.Mocked<InAppNotificationService>;
 const cache = {
   get: jest.fn(),
   set: jest.fn(),
@@ -62,6 +68,12 @@ describe('AuthenticationService', () => {
       client: { baseUrl: 'https://app.example.com' },
       isProd: false,
     });
+    userService.find.mockClear();
+    userService.updateOne.mockClear();
+    userService.createOne.mockClear();
+    notificationService.sendEmail.mockClear();
+    inAppNotificationService.create.mockClear();
+    inAppNotificationService.create.mockResolvedValue({} as InAppNotification);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -69,6 +81,10 @@ describe('AuthenticationService', () => {
         { provide: UserService, useValue: userService },
         { provide: JwtService, useValue: jwtService },
         { provide: NotificationService, useValue: notificationService },
+        {
+          provide: InAppNotificationService,
+          useValue: inAppNotificationService,
+        },
         { provide: Cache, useValue: cache },
         {
           provide: getModelToken(DB_TABLE_NAMES.passwordResetTokens),
@@ -193,18 +209,10 @@ describe('AuthenticationService', () => {
         accessToken: 'token',
         accessTokenExpires: expect.any(Date),
       });
-      expect(notificationService.sendEmail).toHaveBeenCalledTimes(2);
-      expect(notificationService.sendEmail).toHaveBeenNthCalledWith(
-        1,
+      expect(notificationService.sendEmail).toHaveBeenCalledTimes(1);
+      expect(notificationService.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
           templateId: EmailTemplateID.VERIFY_EMAIL_ADDRESS,
-        }),
-      );
-      expect(notificationService.sendEmail).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({
-          templateId: EmailTemplateID.WELCOME_EMAIL,
-          subject: 'Welcome to Blivap',
         }),
       );
     });
@@ -302,7 +310,10 @@ describe('AuthenticationService', () => {
       const user = {
         id: '507f1f77bcf86cd799439011',
         email: 'test@test.com',
+        firstname: 'Test',
+        lastname: 'User',
         emailValidationToken: 'ABC123',
+        emailVerified: false,
       } as User;
 
       userService.find.mockResolvedValue([user]);
@@ -317,6 +328,41 @@ describe('AuthenticationService', () => {
         { _id: user.id },
         { emailVerified: true, emailVerifiedAt: expect.any(Date) },
       );
+      expect(notificationService.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          templateId: EmailTemplateID.WELCOME_EMAIL,
+          subject: 'Welcome to Blivap',
+        }),
+      );
+      expect(inAppNotificationService.create).toHaveBeenCalledWith(
+        user.id,
+        NotificationEventType.Welcome,
+        'Welcome to Blivap',
+        'Your email is verified. You are all set to get started.',
+        {},
+      );
+    });
+
+    it('should not resend welcome or update when already verified', async () => {
+      const user = {
+        id: '507f1f77bcf86cd799439011',
+        email: 'test@test.com',
+        firstname: 'Test',
+        lastname: 'User',
+        emailValidationToken: 'ABC123',
+        emailVerified: true,
+      } as User;
+
+      userService.find.mockResolvedValue([user]);
+
+      await service.veirfyEmail({
+        email: user.email,
+        emailValidationToken: user.emailValidationToken,
+      });
+
+      expect(userService.updateOne).not.toHaveBeenCalled();
+      expect(notificationService.sendEmail).not.toHaveBeenCalled();
+      expect(inAppNotificationService.create).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException with invalid token', async () => {

@@ -66,6 +66,7 @@ export enum NotificationChannel {
 }
 
 export enum NotificationEventType {
+  Welcome = 'welcome',
   DonorMatched = 'donor_matched',
   BookingRequestSent = 'booking_request_sent',
   BookingAccepted = 'booking_accepted',

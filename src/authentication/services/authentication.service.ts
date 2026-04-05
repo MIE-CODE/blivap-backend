@@ -16,10 +16,12 @@ import { pick } from 'lodash';
 import * as moment from 'moment';
 import { Model, Types } from 'mongoose';
 
+import { InAppNotificationService } from 'src/notification/services/in-app-notification.service';
 import { NotificationService } from 'src/notification/services/notification.service';
 import { EmailTemplateID } from 'src/notification/types';
 import config from 'src/shared/config';
 import { DB_TABLE_NAMES } from 'src/shared/constants';
+import { NotificationEventType } from 'src/shared/domain/enums';
 import { Util } from 'src/shared/util';
 import { User } from 'src/user/schemas/user.schema';
 import { UserService } from 'src/user/services/user.service';
@@ -49,6 +51,7 @@ export class AuthenticationService {
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
     private readonly notificationService: NotificationService,
+    private readonly inAppNotifications: InAppNotificationService,
     private readonly cache: Cache,
     @InjectModel(DB_TABLE_NAMES.passwordResetTokens)
     private readonly passwordResetTokenModel: Model<PasswordResetTokenDocument>,
@@ -143,7 +146,6 @@ export class AuthenticationService {
     });
 
     this.sendEmailVerificationLink(newUser);
-    this.sendWelcomeEmail(newUser);
 
     this.logger.log('Successful signup', {
       payload: { ...payload, password: '' },
@@ -167,7 +169,7 @@ export class AuthenticationService {
     }
   }
 
-  /** Queues welcome email for new accounts (uses CLIENT_BASE_URL for app link). */
+  /** Queues welcome email after email verification (uses CLIENT_BASE_URL for app link). */
   sendWelcomeEmail(user: User) {
     const appUrl = config().client.baseUrl || 'https://blivap.com';
 
@@ -195,20 +197,30 @@ export class AuthenticationService {
   }
 
   async veirfyEmail(payload: VerifyEmailDTO) {
-    const [user] = await this.userService.find(
-      {
-        emailValidationToken: payload.emailValidationToken,
-        email: payload.email.trim().toLowerCase(),
-      },
-      ['_id'],
-    );
+    const [user] = await this.userService.find({
+      emailValidationToken: payload.emailValidationToken,
+      email: payload.email.trim().toLowerCase(),
+    });
     if (!user) {
       throw new BadRequestException('invalid email validation token');
+    }
+
+    if (user.emailVerified) {
+      return;
     }
 
     await this.userService.updateOne(
       { _id: user.id },
       { emailVerified: true, emailVerifiedAt: new Date() },
+    );
+
+    this.sendWelcomeEmail(user);
+    await this.inAppNotifications.create(
+      user.id,
+      NotificationEventType.Welcome,
+      'Welcome to Blivap',
+      'Your email is verified. You are all set to get started.',
+      {},
     );
   }
 
